@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+<title>ItzGram — билет</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
+
+  :root{
+    --bg:#050506;
+    --bg2:#0a0a0d;
+    --ink:#f4f3ef;
+    --muted:#7a7a80;
+    --muted2:#4d4d52;
+    --line:rgba(255,255,255,.12);
+    --line-soft:rgba(255,255,255,.06);
+    --red:#ff1836;
+    --red-dim:#e30613;
+    --blue:#2f6bff;
+    --ok:#3ddc84;
+    --font-display:'Unbounded',sans-serif;
+    --font-mono:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{
+    margin:0;padding:0;height:100%;height:100dvh;
+    background:var(--bg);color:var(--ink);
+    font-family:var(--font-mono);
+    overflow:hidden;overscroll-behavior:none;
+    position:fixed;inset:0;width:100%;
+    -webkit-user-select:none;user-select:none;
+  }
+  :focus-visible{outline:2px solid var(--blue);outline-offset:3px;border-radius:6px}
+
+  /* ============ shared background dressing ============ */
+  .vignette{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 40%,transparent 0%,transparent 55%,rgba(0,0,0,.55) 100%)}
+  .grain{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  }
+  .dotgrid{position:fixed;inset:0;z-index:0;pointer-events:none;background-image:radial-gradient(circle,rgba(255,255,255,.14) 1px,transparent 1px);background-size:22px 22px;-webkit-mask-image:radial-gradient(circle at 50% 45%,#000 0%,transparent 70%);mask-image:radial-gradient(circle at 50% 45%,#000 0%,transparent 70%)}
+  canvas#net{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+  canvas#confetti{position:fixed;inset:0;width:100%;height:100%;z-index:40;pointer-events:none}
+  .ring{position:fixed;top:50%;left:50%;width:min(440px,92vw);height:min(440px,92vw);border-radius:50%;border:1px dashed var(--line);transform:translate(-50%,-50%);z-index:0;pointer-events:none;animation:rr 32s linear infinite}
+  .ring::before,.ring::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;left:50%;transform:translateX(-50%)}
+  .ring::before{top:-8px;background:var(--red);box-shadow:0 0 20px var(--red)}
+  .ring::after{bottom:-8px;top:auto;background:var(--blue);box-shadow:0 0 20px var(--blue)}
+  @keyframes rr{from{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}
+  .bracket{position:fixed;width:18px;height:18px;border-color:var(--line);border-style:solid;z-index:1;pointer-events:none}
+  .bracket.tl{top:26px;left:26px;border-width:1px 0 0 1px}
+  .bracket.tr{top:26px;right:26px;border-width:1px 1px 0 0}
+  .bracket.bl{bottom:26px;left:26px;border-width:0 0 1px 1px}
+  .bracket.br{bottom:26px;right:26px;border-width:0 1px 1px 0}
+  .corner-tag{position:fixed;z-index:2;font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted2);pointer-events:none;display:flex;align-items:center;gap:6px}
+  .corner-tag.left{top:52px;left:26px}
+  .corner-tag.right{top:52px;right:26px}
+  .corner-tag .led{width:5px;height:5px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pulse 1.6s ease-in-out infinite}
+
+  /* ============ app shell ============ */
+  #appRoot{position:fixed;inset:0;opacity:0;transition:opacity 1.6s ease}
+  #appRoot.show{opacity:1}
+
+  .app{
+    position:relative;z-index:5;height:100%;width:100%;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:20px 18px calc(20px + env(safe-area-inset-bottom));
+  }
+  .screen{width:min(420px,100%);display:none}
+  .screen.active{display:block;animation:screenIn .6s cubic-bezier(.16,.9,.2,1)}
+  @keyframes screenIn{0%{opacity:0;transform:translateY(14px) scale(.985)}100%{opacity:1;transform:translateY(0) scale(1)}}
+
+  .glass{
+    background:linear-gradient(180deg,rgba(14,14,17,.85),rgba(8,8,10,.82));
+    backdrop-filter:blur(22px) saturate(150%);
+    -webkit-backdrop-filter:blur(22px) saturate(150%);
+    border:1px solid var(--line);
+    border-radius:22px;
+    box-shadow:0 24px 60px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);
+    padding:26px 22px 22px;
+    position:relative;overflow:hidden;
+    max-height:74vh;overflow-y:auto;
+  }
+  .glass::before{
+    content:"";position:absolute;top:-1px;left:50%;transform:translateX(-50%);
+    width:38px;height:2px;background:linear-gradient(90deg,var(--red),var(--blue));box-shadow:0 0 14px rgba(255,24,54,.5);
+    border-radius:0 0 3px 3px;
+  }
+
+  h1{font-family:var(--font-display);font-size:17px;margin:0 0 8px;letter-spacing:.01em;font-weight:700;text-transform:uppercase}
+  p{margin:0 0 12px;color:var(--muted);line-height:1.65;font-size:13px}
+  .title-main{text-align:center;margin-bottom:22px}
+  .title-main .wordmark{
+    font-family:var(--font-display);font-weight:900;
+    font-size:clamp(42px,13vw,58px);letter-spacing:.14em;line-height:1;
+    margin:6px 0 14px;text-transform:uppercase;
+    color:var(--ink);
+    display:inline-flex;align-items:baseline;justify-content:center;gap:0;
+    animation:soonPulse 2.4s ease-in-out infinite;
+    text-shadow:0 0 28px rgba(255,24,54,.35);
+  }
+  @keyframes soonPulse{
+    0%,100%{transform:scale(1);text-shadow:0 0 18px rgba(255,24,54,.22),0 0 40px rgba(47,107,255,.12)}
+    50%{transform:scale(1.04);text-shadow:0 0 32px rgba(255,24,54,.45),0 0 56px rgba(47,107,255,.2)}
+  }
+  .title-main .wordmark .soon-text{color:var(--ink)}
+  .title-main .wordmark .dots{
+    display:inline-block;
+    min-width:1.1em;
+    margin-left:.06em;
+    letter-spacing:.06em;
+    color:var(--ink);
+    animation:dotsType 1.5s steps(4,end) infinite;
+  }
+  /* точки печатаются после слова: пусто → . → .. → ... */
+  @keyframes dotsType{
+    0%{clip-path:inset(0 100% 0 0)}
+    25%{clip-path:inset(0 66% 0 0)}
+    50%{clip-path:inset(0 33% 0 0)}
+    75%,100%{clip-path:inset(0 0 0 0)}
+  }
+  .title-main .kicker{color:var(--muted);font-size:12.5px;letter-spacing:.02em}
+
+  .badge{
+    display:inline-flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--muted);border:1px solid var(--line);border-radius:999px;
+    padding:6px 13px;margin-bottom:14px;font-weight:500;
+  }
+  .badge::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--muted)}
+  .badge.accent{color:#ff8f9c;border-color:rgba(255,24,54,.4);background:rgba(255,24,54,.06)}
+  .badge.accent::before{background:var(--red);box-shadow:0 0 8px var(--red)}
+  .badge.live::before{background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pulse 1.6s ease-in-out infinite}
+
+  .channels{display:flex;flex-direction:column;gap:9px;margin:14px 0 18px}
+  .ch{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:13px 15px;border-radius:13px;
+    background:rgba(255,255,255,.025);border:1px solid var(--line);
+    transition:border-color .3s ease,background .3s ease,transform .2s ease;
+  }
+  .ch a{color:var(--ink);text-decoration:none;font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:8px}
+  .ch a::before{content:"↗";font-size:11px;color:var(--muted);order:2}
+  .ch .status{font-size:10.5px;color:var(--muted);white-space:nowrap;letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+  .ch.ok{border-color:rgba(61,220,132,.35);background:rgba(61,220,132,.06)}
+  .ch.ok .status{color:var(--ok)}
+  .ch.bad{border-color:rgba(255,24,54,.35);background:rgba(255,24,54,.06)}
+  .ch.bad .status{color:var(--red)}
+
+  .btn{
+    width:100%;border:1px solid var(--red);border-radius:999px;padding:15px 16px;
+    font-family:var(--font-mono);font-size:11.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+    cursor:pointer;background:linear-gradient(135deg,var(--red) 0%,#c8102e 100%);color:#fff;
+    box-shadow:0 12px 32px rgba(255,24,54,.28),inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s ease,opacity .2s ease,box-shadow .2s ease;
+    position:relative;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn:disabled{opacity:.4;cursor:default;transform:none;box-shadow:none}
+  .btn.secondary{
+    background:rgba(255,255,255,.03);color:var(--ink);border:1px solid var(--line);
+    box-shadow:none;margin-top:8px;
+  }
+  .btn-row{display:flex;gap:8px;margin-top:10px}
+  .btn-row .btn{flex:1}
+
+  /* ============ TICKET / HOLO CARD ============ */
+  .ticket-card{padding:0;overflow:visible}
+  .ticket-top{padding:26px 22px 20px}
+  .ticket-num{
+    font-family:var(--font-display);
+    font-size:clamp(22px,6.4vw,30px);font-weight:800;letter-spacing:.01em;
+    text-align:center;margin:8px 0 4px;color:var(--ink);
+    text-shadow:0 0 30px rgba(255,24,54,.35);
+    position:relative;
+  }
+  .ticket-sub{text-align:center;color:var(--muted2);font-size:10px;letter-spacing:.22em;text-transform:uppercase;margin-bottom:4px}
+
+  .perf{position:relative;height:0;margin:6px 0}
+  .perf .dashes{position:absolute;left:22px;right:22px;top:-1px;border-top:1.5px dashed var(--line);}
+  .perf .notch{position:absolute;top:-11px;width:22px;height:22px;border-radius:50%;background:var(--bg2);z-index:2;box-shadow:inset 0 0 0 1px var(--line)}
+  .perf .notch.l{left:-11px}
+  .perf .notch.r{right:-11px}
+
+  .ref-box{margin:0;padding:18px 22px 22px;font-size:12px;position:relative}
+  .ref-box .label{color:var(--muted);margin-bottom:9px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between}
+  .ref-link{word-break:break-all;color:var(--ink);font-weight:500;margin-bottom:14px;background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:11px;padding:11px 13px;-webkit-user-select:text;user-select:text;font-size:11.5px}
+  .ref-stats{display:flex;gap:10px;margin-bottom:6px}
+  .ref-stats div{flex:1;background:rgba(0,0,0,.35);border-radius:12px;padding:12px 8px;text-align:center;border:1px solid var(--line)}
+  .ref-stats b{display:block;font-family:var(--font-display);font-size:19px;font-weight:700;color:var(--ink)}
+  .ref-stats span{color:var(--muted);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase}
+  .hint{font-size:11px;color:var(--muted2);margin-top:14px;text-align:center;line-height:1.6}
+
+  .barcode{
+    height:34px;margin:2px 22px 18px;border-radius:6px;opacity:.85;
+    background-image:repeating-linear-gradient(90deg,var(--ink) 0px,var(--ink) 1px,transparent 1px,transparent 3px,var(--ink) 3px,var(--ink) 5px,transparent 5px,transparent 6px,var(--ink) 6px,var(--ink) 9px,transparent 9px,transparent 10px);
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
+    mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
+  }
+  .barcode-label{text-align:center;font-size:9px;letter-spacing:.3em;color:var(--muted2);margin:-12px 0 16px;text-transform:uppercase}
+
+  .ticket-card::after{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:3;border-radius:22px;
+    background:linear-gradient(115deg,transparent 30%,rgba(255,24,54,.10) 45%,rgba(255,255,255,.14) 50%,rgba(47,107,255,.10) 55%,transparent 70%);
+    background-size:250% 250%;background-position:0% 0%;
+    animation:holoSheen 5.5s ease-in-out infinite;
+    mix-blend-mode:screen;
+  }
+  @keyframes holoSheen{0%{background-position:0% 0%}50%{background-position:100% 100%}100%{background-position:0% 0%}}
+
+  .err{
+    color:#ff8f9c;background:rgba(255,24,54,.08);
+    border:1px solid rgba(255,24,54,.3);border-radius:12px;
+    padding:11px 13px;font-size:12px;margin-bottom:12px;display:none;
+  }
+  .err.show{display:block}
+
+  ::-webkit-scrollbar{width:0;height:0}
+
+  @media (max-width:600px){
+    h1{font-size:15.5px}
+  }
+
+  /* ============ BOOT SCREEN ============ */
+  #bootScreen{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;transition:opacity 1.1s ease;background:#000}
+  #bootScreen.fade-out{opacity:0;pointer-events:none}
+
+  .term{position:relative;z-index:3;width:min(640px,88vw);padding:0 8px}
+  .term-header{font-size:10.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--muted);margin-bottom:18px;display:flex;align-items:center;gap:8px;font-weight:500}
+  .term-header .dot{width:6px;height:6px;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red);animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  .line{font-size:13.5px;line-height:1.8;min-height:1.8em;white-space:pre-wrap;word-break:break-all;opacity:0;animation:lineIn .45s ease forwards}
+  @keyframes lineIn{0%{opacity:0;transform:translateY(3px)}100%{opacity:1;transform:translateY(0)}}
+  .line .prefix{color:var(--red);opacity:.85}
+  .line .text{color:var(--ink)}
+  .line .warn{color:var(--red)}
+
+  .cursor{display:inline-block;width:8px;height:1em;background:var(--ink);vertical-align:text-bottom;margin-left:2px;animation:blink .75s step-end infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+  #bootScreen .scanlines{position:absolute;inset:0;z-index:4;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0px,rgba(0,0,0,.15) 1px,transparent 1px,transparent 3px);opacity:.5}
+
+  .glitch-active{animation:glitchFlicker .28s linear}
+  @keyframes glitchFlicker{
+    0%{filter:none}
+    20%{filter:brightness(1.5) contrast(1.3)}
+    35%{filter:brightness(.7)}
+    50%{filter:brightness(1.3) contrast(1.2)}
+    65%{filter:none}
+    80%{filter:brightness(1.2)}
+    100%{filter:none}
+  }
+  .glitch-slice{position:absolute;left:0;width:100%;height:2px;background:rgba(255,255,255,.3);z-index:5;pointer-events:none;opacity:0}
+  .glitch-slice.show{animation:sliceFlash .16s ease-out forwards}
+  @keyframes sliceFlash{0%{opacity:.85;transform:scaleX(1.02)}100%{opacity:0;transform:scaleX(1)}}
+
+  .rgb-split{position:absolute;inset:0;pointer-events:none;z-index:4;opacity:0;mix-blend-mode:screen}
+  .rgb-split.show{animation:rgbSplit .26s ease-out forwards}
+  @keyframes rgbSplit{
+    0%{opacity:.5;box-shadow:-2px 0 0 rgba(255,24,54,.5),2px 0 0 rgba(255,255,255,.35)}
+    100%{opacity:0;box-shadow:0 0 0 transparent,0 0 0 transparent}
+  }
+
+  .power-on{position:absolute;inset:0;background:#fff;opacity:0;z-index:9;pointer-events:none;animation:powerFlash .7s ease-out forwards}
+  @keyframes powerFlash{0%{opacity:.6}30%{opacity:.2}60%{opacity:.35}100%{opacity:0}}
+
+  /* ---- authentic CRT power-on: static crackle -> dot -> line -> flash ---- */
+  .tv-noise{position:absolute;inset:-20%;width:140%;height:140%;z-index:6;opacity:0;pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode:screen;filter:brightness(1.3)}
+  .tv-noise.on{animation:noiseIn .3s ease forwards,noiseMove .12s steps(2) infinite}
+  @keyframes noiseIn{0%{opacity:0}100%{opacity:.32}}
+  .tv-noise.off{animation:noiseOut .3s ease forwards}
+  @keyframes noiseOut{0%{opacity:.32}100%{opacity:0}}
+  @keyframes noiseMove{0%{transform:translate(0,0)}25%{transform:translate(-2%,1%)}50%{transform:translate(1%,-2%)}75%{transform:translate(-1%,2%)}100%{transform:translate(0,0)}}
+
+  .tv-dot{position:absolute;left:50%;top:50%;width:8px;height:8px;border-radius:50%;background:#fff;
+    box-shadow:0 0 18px 6px rgba(255,255,255,.9);transform:translate(-50%,-50%) scale(0);opacity:0;z-index:7}
+  .tv-dot.pop{animation:dotPop .5s cubic-bezier(.2,1.4,.4,1) forwards}
+  @keyframes dotPop{0%{opacity:0;transform:translate(-50%,-50%) scale(0)}55%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+  .tv-dot.absorb{animation:dotAbsorb .25s ease-in forwards}
+  @keyframes dotAbsorb{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(.4)}}
+
+  .tv-line{position:absolute;left:0;top:50%;width:100%;height:2px;background:#fff;box-shadow:0 0 16px 5px rgba(255,255,255,.85);transform:translateY(-50%) scaleY(1) scaleX(.01);opacity:0;z-index:7}
+  .tv-line.expand{animation:lineExpand 1.5s cubic-bezier(.16,.9,.2,1) forwards}
+  @keyframes lineExpand{
+    0%{opacity:0;transform:translateY(-50%) scaleY(1) scaleX(.01)}
+    10%{opacity:1;transform:translateY(-50%) scaleY(1) scaleX(.08)}
+    36%{opacity:1;transform:translateY(-50%) scaleY(1) scaleX(1)}
+    55%{opacity:1;transform:translateY(-50%) scaleY(1) scaleX(1)}
+    82%{opacity:1;transform:translateY(-50%) scaleY(60) scaleX(1)}
+    100%{opacity:0;transform:translateY(-50%) scaleY(260) scaleX(1)}
+  }
+  .tv-flash{position:absolute;inset:0;background:#fff;opacity:0;z-index:8}
+  .tv-flash.flash{animation:tvFlash .6s ease-out forwards}
+  @keyframes tvFlash{0%{opacity:0}25%{opacity:.9}100%{opacity:0}}
+
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+
+  <!-- ============ BOOT SCREEN ============ -->
+  <div id="bootScreen">
+    <div class="dotgrid"></div>
+    <div class="bracket tl"></div><div class="bracket tr"></div>
+    <div class="bracket bl"></div><div class="bracket br"></div>
+    <div class="power-on" id="powerOn"></div>
+
+    <div class="term" id="term">
+      <div class="term-header"><span class="dot"></span>SYSTEM BOOT — v3.14</div>
+      <div id="output"></div>
+      <span class="cursor" id="cursor"></span>
+    </div>
+
+    <div class="scanlines"></div>
+    <div class="rgb-split" id="rgbSplit"></div>
+    <div class="glitch-slice" id="glitchSlice"></div>
+    <div class="tv-noise" id="tvNoise"></div>
+    <div class="tv-dot" id="tvDot"></div>
+    <div class="tv-line" id="tvLine"></div>
+    <div class="tv-flash" id="tvFlash"></div>
+  </div>
+
+  <!-- ============ APP ============ -->
+  <div id="appRoot">
+    <div class="vignette"></div>
+    <div class="dotgrid"></div>
+    <canvas id="net"></canvas>
+    <canvas id="confetti"></canvas>
+    <div class="ring"></div>
+    <div class="bracket tl"></div><div class="bracket tr"></div>
+    <div class="bracket bl"></div><div class="bracket br"></div>
+    <div class="corner-tag left">ITZ / 02</div>
+    <div class="corner-tag right"><span class="led"></span>LIVE</div>
+    <div class="grain"></div>
+
+    <div class="app">
+      <!-- SUBSCRIBE -->
+      <div class="screen active" id="screen-sub">
+        <div class="glass">
+          <div class="badge accent">доступ закрыт</div>
+          <h1>Подписка на каналы</h1>
+          <p>Чтобы получить билет, подпишись на все каналы и нажми «Проверить».</p>
+          <div class="err" id="sub-err"></div>
+          <div class="channels" id="channels"></div>
+          <button class="btn" id="btn-check" type="button">Проверить подписку</button>
+        </div>
+      </div>
+
+      <!-- MAIN -->
+      <div class="screen" id="screen-main">
+        <div class="title-main">
+          <div class="badge live">early access</div>
+          <div class="wordmark"><span class="soon-text">СКОРО</span><span class="dots">...</span></div>
+          <p class="kicker">Ранний доступ открыт. Забери свой билет.</p>
+        </div>
+        <button class="btn" id="btn-ticket" type="button" style="width:min(420px,100%)">Получить билет</button>
+      </div>
+
+      <!-- TICKET PANEL -->
+      <div class="screen" id="screen-ticket">
+        <div class="glass ticket-card" id="ticket-panel">
+          <div class="ticket-top">
+            <div class="badge accent">твой билет</div>
+            <h1 id="ticket-title">Билет получен</h1>
+            <p id="ticket-desc">Сохрани номер. Он привязан к твоему Telegram.</p>
+            <div class="err" id="ticket-err"></div>
+            <div class="ticket-sub">Серийный номер</div>
+            <div class="ticket-num" id="ticket-num">—</div>
+          </div>
+
+          <div class="ref-box" id="ref-box" style="display:none">
+            <div class="perf"><div class="dashes"></div><div class="notch l"></div><div class="notch r"></div></div>
+            <div class="label"><span>Ваша реф.ссылка</span><span>REF</span></div>
+            <div class="ref-link" id="ref-link">—</div>
+            <div class="ref-stats">
+              <div><b id="ref-invited">0</b><span>Приглашено</span></div>
+              <div><b id="ref-got">0</b><span>Получили билет</span></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn secondary" id="btn-copy" type="button">Скопировать</button>
+              <button class="btn secondary" id="btn-share" type="button">Поделиться</button>
+            </div>
+            <div class="hint">Зовите друзей по вашей реф.ссылке и получите бонусы после запуска!</div>
+          </div>
+          <div class="barcode"></div>
+          <div class="barcode-label">ItzGram · Access Pass</div>
+
+          <div style="padding:0 22px 22px">
+            <button class="btn secondary" id="btn-back" type="button" style="margin-top:0">Назад</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ========= CONFIG ========= */
+const API_BASE = 'https://igrser.onrender.com'; // ← URL Render
+const PREVIEW = false; // true = демо без сервера
+/* ========================== */
+
+const tg = window.Telegram?.WebApp;
+try { tg?.ready(); tg?.expand(); } catch (_) {}
+
+const user = tg?.initDataUnsafe?.user || null;
+const tgId = user?.id ? String(user.id) : null;
+
+function getStartParam() {
+  const u = tg?.initDataUnsafe?.start_param;
+  if (u) return String(u);
+  try {
+    const raw = tg?.initData || '';
+    const m = raw.match(/(?:^|&)start_param=([^&]+)/);
+    if (m) return decodeURIComponent(m[1]);
+  } catch (_) {}
+  try {
+    const q = new URLSearchParams(location.search);
+    return q.get('tgWebAppStartParam') || q.get('startapp') || q.get('start') || null;
+  } catch (_) {}
+  return null;
+}
+const startParam = getStartParam();
+
+const $ = (id) => document.getElementById(id);
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
+  $('screen-' + name).classList.add('active');
+}
+function showErr(el, msg) {
+  el.textContent = msg || '';
+  el.classList.toggle('show', !!msg);
+}
+
+const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---- network bg (red / white / blue nodes, matching the theme) ---- */
+(function netBg() {
+  const c = $('net');
+  const ctx = c.getContext('2d');
+  let w, h, dots;
+  function resize() {
+    w = c.width = window.innerWidth * devicePixelRatio;
+    h = c.height = window.innerHeight * devicePixelRatio;
+    c.style.width = window.innerWidth + 'px';
+    c.style.height = window.innerHeight + 'px';
+    const n = Math.min(48, Math.floor((window.innerWidth * window.innerHeight) / 18000));
+    dots = Array.from({ length: n }, () => {
+      const r = Math.random();
+      return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.35 * devicePixelRatio,
+        vy: (Math.random() - 0.5) * 0.35 * devicePixelRatio,
+        r: (1 + Math.random() * 1.6) * devicePixelRatio,
+        color: r < .08 ? 'red' : r < .16 ? 'blue' : 'white',
+      };
+    });
+  }
+  function frame() {
+    ctx.clearRect(0, 0, w, h);
+    for (const d of dots) {
+      d.x += d.vx; d.y += d.vy;
+      if (d.x < 0 || d.x > w) d.vx *= -1;
+      if (d.y < 0 || d.y > h) d.vy *= -1;
+    }
+    for (let i = 0; i < dots.length; i++) {
+      for (let j = i + 1; j < dots.length; j++) {
+        const a = dots[i], b = dots[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 120 * devicePixelRatio) {
+          ctx.strokeStyle = `rgba(255,255,255,${(1 - dist / (120 * devicePixelRatio)) * 0.18})`;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
+    }
+    for (const d of dots) {
+      ctx.fillStyle = d.color === 'red' ? 'rgba(255,24,54,.9)' : d.color === 'blue' ? 'rgba(47,107,255,.9)' : 'rgba(255,255,255,.55)';
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  resize();
+  frame();
+  window.addEventListener('resize', resize);
+})();
+
+/* ---- confetti burst on ticket reveal ---- */
+(function confettiFx() {
+  const c = $('confetti');
+  const ctx = c.getContext('2d');
+  let particles = [];
+  let running = false;
+  function resize() {
+    c.width = window.innerWidth * devicePixelRatio;
+    c.height = window.innerHeight * devicePixelRatio;
+    c.style.width = window.innerWidth + 'px';
+    c.style.height = window.innerHeight + 'px';
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const colors = ['rgba(255,24,54,.95)', 'rgba(47,107,255,.95)', 'rgba(244,243,239,.95)', 'rgba(61,220,132,.9)'];
+
+  window.fireConfetti = function () {
+    if (prefersReducedMotion) return;
+    const cx = c.width / 2, cy = c.height * 0.34;
+    const n = 46;
+    for (let i = 0; i < n; i++) {
+      const angle = (Math.PI * 2 * i) / n + Math.random() * 0.4;
+      const speed = (2.4 + Math.random() * 3.4) * devicePixelRatio;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2 * devicePixelRatio,
+        g: 0.09 * devicePixelRatio,
+        size: (3 + Math.random() * 4) * devicePixelRatio,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.3,
+        life: 0,
+        maxLife: 70 + Math.random() * 40,
+      });
+    }
+    if (!running) { running = true; requestAnimationFrame(loop); }
+  };
+
+  function loop() {
+    ctx.clearRect(0, 0, c.width, c.height);
+    particles.forEach((p) => {
+      p.vy += p.g; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.life++;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - p.life / p.maxLife);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      ctx.restore();
+    });
+    particles = particles.filter((p) => p.life < p.maxLife);
+    if (particles.length) {
+      requestAnimationFrame(loop);
+    } else {
+      running = false;
+      ctx.clearRect(0, 0, c.width, c.height);
+    }
+  }
+})();
+
+// block page scroll / drag
+document.addEventListener('touchmove', (e) => {
+  if (!e.target.closest('.glass')) e.preventDefault();
+}, { passive: false });
+
+/* ---- API helpers ---- */
+async function api(path, body) {
+  const r = await fetch(API_BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  return r.json();
+}
+
+async function fetchChannels() {
+  if (PREVIEW) {
+    return [
+      { channel: 'ItzGet', url: 'https://t.me/ItzGet' },
+      { channel: 'ItzGramInfo', url: 'https://t.me/ItzGramInfo' },
+    ];
+  }
+  const r = await fetch(API_BASE + '/api/channels');
+  const j = await r.json();
+  return j.channels || [];
+}
+
+let previewCheckCount = 0;
+
+async function checkSubs() {
+  if (PREVIEW) {
+    previewCheckCount++;
+    const okSecond = previewCheckCount >= 2;
+    return {
+      ok: okSecond,
+      channels: [
+        { channel: 'ItzGet', url: 'https://t.me/ItzGet', ok: true, status: 'member' },
+        { channel: 'ItzGramInfo', url: 'https://t.me/ItzGramInfo', ok: okSecond, status: okSecond ? 'member' : 'left' },
+      ],
+    };
+  }
+  if (!tgId) throw new Error('Открой через бота');
+  return api('/api/check-subs', { tgId: Number(tgId) });
+}
+
+async function getIp() {
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    const j = await r.json();
+    return j.ip || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function requestTicket() {
+  if (PREVIEW) {
+    return {
+      ok: true,
+      status: 'new',
+      ticket: 'ITZ-847-A3F-5B2-C9E',
+      refLink: 'https://t.me/itzgrambot?start=123456',
+      invited: 0,
+      invitedWithTicket: 0,
+    };
+  }
+  if (!tgId) throw new Error('Открой через бота');
+  const ip = await getIp();
+  return api('/api/ticket', {
+    tgId,
+    username: user?.username || null,
+    firstName: user?.first_name || null,
+    lastName: user?.last_name || null,
+    ip,
+    startParam,
+  });
+}
+
+/* ---- UI: channels ---- */
+function renderChannels(list, states) {
+  const root = $('channels');
+  root.innerHTML = '';
+  list.forEach((ch) => {
+    const st = states?.find((s) => s.channel === ch.channel);
+    const div = document.createElement('div');
+    div.className = 'ch' + (st ? (st.ok ? ' ok' : ' bad') : '');
+    div.innerHTML = `
+      <a href="${ch.url}" target="_blank" rel="noopener">@${ch.channel}</a>
+      <span class="status">${st ? (st.ok ? 'подписан' : 'нет') : 'открыть'}</span>
+    `;
+    root.appendChild(div);
+  });
+}
+
+let channelList = [];
+
+async function initSubs() {
+  try {
+    channelList = await fetchChannels();
+    renderChannels(channelList);
+  } catch (e) {
+    showErr($('sub-err'), 'Не удалось загрузить каналы. Проверь API_BASE.');
+  }
+}
+
+$('btn-check').onclick = async () => {
+  const btn = $('btn-check');
+  btn.disabled = true;
+  btn.textContent = 'Проверяем…';
+  showErr($('sub-err'), '');
+  try {
+    const res = await checkSubs();
+    renderChannels(channelList, res.channels);
+    if (res.ok) {
+      showScreen('main');
+    } else {
+      showErr($('sub-err'), 'Подпишись на все каналы и нажми снова.');
+    }
+  } catch (e) {
+    showErr($('sub-err'), e.message || 'Ошибка проверки');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Проверить подписку';
+  }
+};
+
+/* ---- ticket ---- */
+function showTicketResult(data) {
+  showScreen('ticket');
+  if (!data.ok) {
+    $('ticket-title').textContent = 'Билет недоступен';
+    $('ticket-num').textContent = '—';
+    $('ref-box').style.display = 'none';
+    showErr($('ticket-err'), data.message || 'С этой сети билет уже был получен');
+    return;
+  }
+  showErr($('ticket-err'), '');
+  $('ticket-title').textContent = data.status === 'own' ? 'Твой билет' : 'Билет получен';
+  $('ticket-num').textContent = data.ticket;
+  $('ref-box').style.display = 'block';
+  $('ref-link').textContent = data.refLink;
+  $('ref-invited').textContent = data.invited ?? 0;
+  $('ref-got').textContent = data.invitedWithTicket ?? 0;
+  if (data.status !== 'own') { try { window.fireConfetti && window.fireConfetti(); } catch (_) {} }
+}
+
+$('btn-ticket').onclick = async () => {
+  const btn = $('btn-ticket');
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const data = await requestTicket();
+    showTicketResult(data);
+  } catch (e) {
+    showScreen('ticket');
+    showErr($('ticket-err'), e.message || 'Ошибка');
+    $('ticket-num').textContent = '—';
+    $('ref-box').style.display = 'none';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Получить билет';
+  }
+};
+
+$('btn-back').onclick = () => showScreen('main');
+
+$('btn-copy').onclick = async () => {
+  const link = $('ref-link').textContent;
+  try {
+    await navigator.clipboard.writeText(link);
+    $('btn-copy').textContent = 'Скопировано';
+    setTimeout(() => ($('btn-copy').textContent = 'Скопировать'), 1500);
+  } catch (_) {
+    prompt('Скопируй ссылку:', link);
+  }
+};
+
+$('btn-share').onclick = () => {
+  const link = $('ref-link').textContent;
+  const text = 'Забирай билет ItzGram: ' + link;
+  if (tg?.openTelegramLink) {
+    tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent('Забирай билет ItzGram'));
+  } else if (navigator.share) {
+    navigator.share({ text, url: link }).catch(() => {});
+  } else {
+    prompt('Поделись ссылкой:', link);
+  }
+};
+
+/* ---- app boot (runs once the intro reveals the app) ---- */
+function initApp() {
+  if (!PREVIEW && !tgId) {
+    showScreen('sub');
+    showErr($('sub-err'), 'Открой через кнопку в боте @itzgrambot');
+  } else {
+    initSubs();
+  }
+}
+
+/* ================= INTRO BOOT SEQUENCE ================= */
+const BOOT_KEY = 'itzgram_booted';
+const isReturnVisit = (() => {
+  try { return sessionStorage.getItem(BOOT_KEY) === '1'; } catch (_) { return false; }
+})();
+
+const linesFull = [
+  { text: "Подключение к сети...", delay: 420 },
+  { text: "Загрузка модулей...", delay: 480 },
+  { text: "Получение IP...", delay: 500 },
+  { text: "Проверка пользователя...", delay: 460 },
+  { text: "Установка защищённого канала...", delay: 440 },
+  { text: "Расшифровка данных...", delay: 420 },
+  { text: "Синхронизация модулей...", delay: 400 },
+  { text: "Уровень доступа: ROOT", delay: 380, className: "warn" },
+  { text: "Система готова.", delay: 700, className: "warn" }
+];
+
+const linesShort = [
+  { text: "Активация сессии...", delay: 280 },
+  { text: "Восстановление доступа...", delay: 420, className: "warn" }
+];
+
+const lines = isReturnVisit ? linesShort : linesFull;
+
+const output      = document.getElementById('output');
+const cursor      = document.getElementById('cursor');
+const term        = document.getElementById('term');
+const bootScreen  = document.getElementById('bootScreen');
+const rgbSplit    = document.getElementById('rgbSplit');
+const glitchSlice = document.getElementById('glitchSlice');
+const tvNoise     = document.getElementById('tvNoise');
+const tvDot       = document.getElementById('tvDot');
+const tvLine      = document.getElementById('tvLine');
+const tvFlash     = document.getElementById('tvFlash');
+const appRoot     = document.getElementById('appRoot');
+
+let lineIndex = 0, charIndex = 0;
+
+function markBooted() {
+  try { sessionStorage.setItem(BOOT_KEY, '1'); } catch (_) {}
+}
+
+function triggerGlitch(strong) {
+  term.classList.remove('glitch-active');
+  void term.offsetWidth;
+  term.classList.add('glitch-active');
+
+  glitchSlice.style.top = (10 + Math.random() * 80) + '%';
+  glitchSlice.classList.remove('show');
+  void glitchSlice.offsetWidth;
+  glitchSlice.classList.add('show');
+
+  if (strong) {
+    rgbSplit.classList.remove('show');
+    void rgbSplit.offsetWidth;
+    rgbSplit.classList.add('show');
+  }
+  setTimeout(() => term.classList.remove('glitch-active'), 350);
+}
+
+function randomGlitchLoop() {
+  if (lineIndex >= lines.length) return;
+  const wait = 700 + Math.random() * 1900;
+  setTimeout(() => {
+    if (lineIndex < lines.length) {
+      triggerGlitch(Math.random() > 0.6);
+      randomGlitchLoop();
+    }
+  }, wait);
+}
+
+function typeLine() {
+  if (lineIndex >= lines.length) {
+    setTimeout(isReturnVisit ? quickReveal : startReveal, isReturnVisit ? 200 : 500);
+    return;
+  }
+  const current = lines[lineIndex];
+  const lineEl = document.createElement('div');
+  lineEl.className = 'line';
+
+  const prefix = document.createElement('span');
+  prefix.className = 'prefix';
+  prefix.textContent = '> ';
+  lineEl.appendChild(prefix);
+
+  const textSpan = document.createElement('span');
+  textSpan.className = 'text' + (current.className ? ' ' + current.className : '');
+  lineEl.appendChild(textSpan);
+
+  output.appendChild(lineEl);
+  lineEl.appendChild(cursor);
+
+  function typeChar() {
+    if (charIndex < current.text.length) {
+      textSpan.textContent += current.text[charIndex];
+      charIndex++;
+      if (!isReturnVisit && Math.random() < 0.04) triggerGlitch(false);
+      setTimeout(typeChar, isReturnVisit ? 18 + Math.random() * 22 : 28 + Math.random() * 50);
+    } else {
+      charIndex = 0;
+      lineIndex++;
+      output.appendChild(cursor);
+      setTimeout(typeLine, current.delay);
+    }
+  }
+  typeChar();
+}
+
+function openApp() {
+  markBooted();
+  bootScreen.classList.add('fade-out');
+  appRoot.classList.add('show');
+  initApp();
+  setTimeout(() => bootScreen.remove(), 1100);
+}
+
+/* Полный CRT-reveal — только первый заход в сессии */
+function startReveal() {
+  cursor.style.display = 'none';
+  setTimeout(() => tvNoise.classList.add('on'), 80);
+  setTimeout(() => tvDot.classList.add('pop'), 420);
+  setTimeout(() => { tvNoise.classList.remove('on'); tvNoise.classList.add('off'); }, 750);
+  setTimeout(() => { tvDot.classList.remove('pop'); tvDot.classList.add('absorb'); tvLine.classList.add('expand'); }, 950);
+  setTimeout(() => tvFlash.classList.add('flash'), 2150);
+  setTimeout(openApp, 2450);
+}
+
+/* Короткий выход — повторный заход */
+function quickReveal() {
+  cursor.style.display = 'none';
+  triggerGlitch(true);
+  setTimeout(openApp, 320);
+}
+
+setTimeout(() => {
+  document.getElementById('powerOn').classList.add('hidden');
+  if (isReturnVisit) {
+    const header = document.querySelector('#bootScreen .term-header');
+    if (header) header.innerHTML = '<span class="dot"></span>SESSION RESTORE';
+  }
+  typeLine();
+  if (!isReturnVisit) randomGlitchLoop();
+}, isReturnVisit ? 200 : 700);
+</script>
+</body>
+</html>
